@@ -1,0 +1,28 @@
+# Ambiente virtual
+venv/
+.env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# YOLO / Ultralytics
+runs/
+*.pt
+*.onnx
+
+# Vídeos
+*.mp4
+
+# Logs
+*.log
+
+# IDEs
+.vscode/
+.idea/
+
+# Sistema
+.DS_Store
+Thumbs.db
