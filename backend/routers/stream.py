@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 import cv2
 import time
-from typing import Dict, Generator
+from typing import Dict, Generator, List
 import threading
 
 from models.detector import get_detector
@@ -13,6 +13,10 @@ router = APIRouter(prefix="/api/stream", tags=["stream"])
 # Armazenar VideoCapture ativos
 active_streams: Dict[str, cv2.VideoCapture] = {}
 stream_locks: Dict[str, threading.Lock] = {}
+
+# Armazenar alertas/detecções por câmera para exibição na interface
+camera_alerts: Dict[str, Dict] = {}
+alerts_lock = threading.Lock()
 
 
 def parse_video_source(url: str):
@@ -119,6 +123,24 @@ def generate_frames(camera_id: str) -> Generator[bytes, None, None]:
         # Detectar EPIs
         try:
             annotated_frame, detections, alerts = detector.detect_with_epi_check(frame)
+            
+            # Armazenar alertas para consulta via API
+            with alerts_lock:
+                # Filtrar violações (classes 5, 7-10: Sem EPI, Sem Capacete, Sem Óculos, Sem Luvas, Sem Botas)
+                violations = [d for d in detections if d.get("class_id") in [5, 7, 8, 9, 10] or d.get("is_violation", False)]
+                
+                # Debug: Mostrar detecções a cada 30 frames
+                if int(current_time * 10) % 30 == 0 and detections:
+                    print(f"🔍 Detecções: {len(detections)} | Violações: {len(violations)} | Classes: {[d.get('class_id') for d in detections]}")
+                
+                camera_alerts[camera_id] = {
+                    "timestamp": current_time,
+                    "alerts": alerts,
+                    "violations": violations,
+                    "has_violations": len(violations) > 0,
+                    "person_count": sum(1 for d in detections if d.get("class_id") == 6),
+                    "epi_count": sum(1 for d in detections if d.get("is_epi", False))
+                }
         except Exception as e:
             print(f"Erro na detecção: {e}")
             annotated_frame = frame
@@ -184,5 +206,27 @@ async def stream_status(camera_id: str):
         "camera_id": camera_id,
         "streaming": is_streaming,
         "active": cameras_db[camera_id].active
+    }
+
+
+@router.get("/{camera_id}/alerts")
+async def get_camera_alerts(camera_id: str):
+    """Retorna os alertas de violações detectadas em tempo real para uma câmera."""
+    if camera_id not in cameras_db:
+        raise HTTPException(status_code=404, detail="Câmera não encontrada")
+    
+    with alerts_lock:
+        alerts_data = camera_alerts.get(camera_id, {
+            "timestamp": 0,
+            "alerts": [],
+            "violations": [],
+            "has_violations": False,
+            "person_count": 0,
+            "epi_count": 0
+        })
+    
+    return {
+        "camera_id": camera_id,
+        **alerts_data
     }
 

@@ -16,6 +16,25 @@ export interface CameraCreate {
   fps: number
 }
 
+export interface Violation {
+  class: string
+  class_id: number
+  confidence: number
+  bbox: number[]
+  is_epi: boolean
+  is_violation: boolean
+}
+
+export interface CameraAlerts {
+  camera_id: string
+  timestamp: number
+  alerts: string[]
+  violations: Violation[]
+  has_violations: boolean
+  person_count: number
+  epi_count: number
+}
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -72,6 +91,12 @@ export const cameraService = {
   // Status do stream
   async getStreamStatus(cameraId: string): Promise<{ streaming: boolean; active: boolean }> {
     const response = await api.get(`/api/stream/${cameraId}/status`)
+    return response.data
+  },
+
+  // Obter alertas de violações da câmera
+  async getCameraAlerts(cameraId: string): Promise<CameraAlerts> {
+    const response = await api.get(`/api/stream/${cameraId}/alerts`)
     return response.data
   },
 }
